@@ -1,0 +1,93 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import pandas as pd
+
+
+def setup_driver(headless=False):
+    chrome_options = Options()
+
+    if headless:
+        chrome_options.add_argument("--headless=new")
+
+    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=chrome_options
+    )
+
+    return driver
+
+
+def scrape_imdb_top_250(headless=False):
+    driver = setup_driver(headless)
+
+    url = "https://www.imdb.com/chart/top"
+    driver.get(url)
+
+    wait = WebDriverWait(driver, 15)
+
+    try:
+        # Wait until movie list loads
+        wait.until(
+            EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, "li.ipc-metadata-list-summary-item")
+            )
+        )
+
+        movies = driver.find_elements(
+            By.CSS_SELECTOR,
+            "li.ipc-metadata-list-summary-item"
+        )
+
+        data = []
+
+        for index, movie in enumerate(movies, start=1):
+            try:
+                title = movie.find_element(By.TAG_NAME, "h3").text
+
+                metadata = movie.find_elements(
+                    By.CLASS_NAME,
+                    "cli-title-metadata-item"
+                )
+
+                year = metadata[0].text if len(metadata) > 0 else "N/A"
+
+                rating = movie.find_element(
+                    By.CLASS_NAME,
+                    "ipc-rating-star--rating"
+                ).text
+
+                data.append({
+                    "Rank": index,
+                    "Title": title,
+                    "Year": year,
+                    "Rating": rating
+                })
+
+            except NoSuchElementException:
+                continue
+
+        df = pd.DataFrame(data)
+        df.to_csv("imdb_top_250.csv", index=False)
+
+        print(" Scraping completed successfully!")
+        print(" Data saved as imdb_top_250.csv")
+
+    except TimeoutException:
+        print(" Page took too long to load.")
+
+    finally:
+        driver.quit()
+
+
+if __name__ == "__main__":
+    # Set headless=True to run without opening browser
+    scrape_imdb_top_250(headless=False)
